@@ -1,4 +1,3 @@
-
 import numpy as np
 import random
 
@@ -15,7 +14,11 @@ class Network():
         np.random.randn(a,b) generates a x b Numpy matrice whoose elements are
         randomly taken from the standard distribution.
 
-        Biases and weights are stored as lists of Numpy matrices
+        Biases and weights are stored as lists of Numpy matrices.
+
+        self.bias is a list column numpy vector.
+        self.weights list of matrices. In each matrix the i-row represent the weights of the i
+        neuron.
 
         """
 
@@ -34,7 +37,7 @@ class Network():
 
             where " . " is the matrix multiplication
 
-            numpy.dot(a,b) is the doc product between arrays.
+            numpy.dot(a,b) is the dot product between arrays.
             For 2-D arrays it is equivalent to matrix multiplication.
 
             """
@@ -61,7 +64,7 @@ class Network():
 
         """
 
-        if test_frequency is None: test_frequency = epochs
+        if test_frequency is None: test_frequency = epochs-1
         if test_data:
             n_test = len(test_data)
         else:
@@ -76,11 +79,12 @@ class Network():
                 for k in xrange(0, n, mini_batch_size)]
             # Splits training data in a list of mini-batches
             for mini_batch in mini_batches:
-                self.update_mini_batch(mini_batch, eta)
+                self.update_mini_batch_M(mini_batch, eta)
                 # Updates network's bias and weights
-            log = "Epoch: {} \ {}".format(j, epochs)
+
+            log = "Epoch: {}".format(j)
             if (((j % test_frequency) == 0) and n_test > 0):
-                log += ("\tTest: {} \ {}".format(self.evaluate(test_data), n_test))
+                log += ("\t\ttest: {} \ {}".format(self.evaluate(test_data), n_test))
             print log
 
             # Si ringrazia @lorsem per il debug di questa if
@@ -107,33 +111,58 @@ class Network():
                        for b, nb in zip(self.biases, nabla_b)]
 
     def update_mini_batch_M(self, mini_batch, eta):
+        """ Compute all the minibatch at the same time using a matrix of training
+            input and a matrix of training output instead of looping
+            over each one of them
+        """
 
-        # Matrice dei vettori di input affiancati (axis = 1)
+        nabla_b = [np.zeros(b.shape) for b in self.biases]
+        nabla_w = [np.zeros(w.shape) for w in self.weights]
+
+        # Matrice dei vettori di input e output affiancati (axis = 1)
         X = np.concatenate(tuple([x for x, y in mini_batch]), axis = 1)
         Y = np.concatenate(tuple([y for x, y in mini_batch]), axis = 1)
+
         activation = X
         activations = [activation]
-        zs = []
+        Zs = []
 
         for b,w in zip(self.biases, self.weights):
-            z = np.dot(w, activation) + b
-            zs.append(z)
+            # Each column of Z is the activation for a different trainig in the batch
+            Z = np.dot(w, activation) + b
+            Zs.append(Z)
 
-            activation = sigmoid_vec(z)
+            activation = sigmoid_vec(Z)
             activations.append(activation)
 
-
+        
         delta = self.cost_derivative(activations[-1], Y) * \
-            sigmoid_prime_vec(zs[-1])
+            sigmoid_prime_vec(Zs[-1])
+
+        nabla_w[-1] = np.dot(delta, activations[-2].transpose())
 
 
+        # now sum all columns of delta 
+        delta_sum = np.expand_dims(delta.sum(axis=1), axis=1)
 
+        nabla_b[-1] = delta_sum
 
+        for l in xrange(2, self.num_layers):
+            Z = Zs[-l]
+            spv = sigmoid_prime_vec(Z)
+            #print "weights[-l+1] shape: {}".format(self.weights[-l+1].transpose().shape)
+            #print "delta shape: {}".format(delta.shape)
+            delta = np.dot(self.weights[-l+1].transpose(), delta) * spv
+            delta_sum = np.expand_dims(delta.sum(axis=1), axis=1)
+            nabla_b[-l] = delta_sum
+            nabla_w[-l] = np.dot(delta, activations[-l-1].transpose())
+       # If it did't screw up till this line, well that's a miracle.
 
-
-
-
-        pass
+        #learn!
+        self.weights = [w-(eta/len(mini_batch))*nw
+                        for w, nw in zip(self.weights, nabla_w)]
+        self.biases = [b-(eta/len(mini_batch))*nb
+                       for b, nb in zip(self.biases, nabla_b)]
 
 
 
@@ -156,6 +185,7 @@ class Network():
         zs = []             # List to store all the z vectors, layer by layer.
 
         for b, w in zip(self.biases, self.weights):
+            # z is a column vector
             z = np.dot(w, activation)+b
             zs.append(z)
             activation = sigmoid_vec(z)
@@ -167,10 +197,26 @@ class Network():
             sigmoid_prime_vec(zs[-1])
 
         nabla_b[-1] = delta
-        # Transpose activations for matrix product
+
+        # Questo passaggio essere il male. Usa un barbatrucco numpyoso per fare questo:
+        # ogni elemento della matrice nabla_w essere il prodotto tra il suo ingresso e il contributo all'errore (delta)
+        # NON essere un prodotto tra matrici algebricamente legale.
+        # ESEMPIO:
+        # 2 ingressi : [[a1 = 1],
+        #               [a2 = 2]]
+        #
+        # 3 uscite con errore delta : [[d1 = 2],
+        #                              [d2 = 3], 
+        #                              [d3 = 4]]
+        #
+        # Matrice nabla_w :  [[2, 4],
+        #                     [3, 6],
+        #                     [4, 8]]  
+        #
         nabla_w[-1] = np.dot(delta, activations[-2].transpose())
 
         for l in xrange(2, self.num_layers):
+            # z is the activation coming from previous layer
             z = zs[-l]
             spv = sigmoid_prime_vec(z)
             delta = np.dot(self.weights[-l+1].transpose(), delta) * spv
@@ -193,10 +239,6 @@ class Network():
                 \partial a for the output activations.
             """
             return (output_activations-y)
-
-
-
-
 
 def sigmoid(z):
     """ Implementig the sigmoid function. """
