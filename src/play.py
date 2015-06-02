@@ -10,7 +10,7 @@ import numpy as np
 # 1 hidden layer network
 input_neurons = 784
 #input_neurons = 2
-hidden_neurons = 40
+hidden_neurons = 50
 output_neurons = 10
 test_frequency = 10
 training_size = 50000
