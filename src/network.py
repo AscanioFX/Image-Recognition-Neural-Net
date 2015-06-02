@@ -1,5 +1,6 @@
 import numpy as np
 import random
+import timeit
 
 
 class Network():
@@ -11,14 +12,10 @@ class Network():
         1 hidden layer, size 3
         1 output layers, size 1
 
-        np.random.randn(a,b) generates a x b Numpy matrice whoose elements are
+        np.random.randn(a,b) generates a x b Numpy 2d-array whoose elements are
         randomly taken from the standard distribution.
 
-        Biases and weights are stored as lists of Numpy matrices.
-
-        self.bias is a list column numpy vector.
-        self.weights list of matrices. In each matrix the i-row represent the weights of the i
-        neuron.
+        Biases and weights are stored as lists of Numpy 2d-arrays.
 
         """
 
@@ -31,22 +28,17 @@ class Network():
 
     def feedforward(self, a):
         """ Return the output of the network if "a" is input.
-            Follows the formula:
 
             output = sigmoid(weights.inputs + bias)
 
-            where " . " is the matrix multiplication
+        """
 
-            numpy.dot(a,b) is the dot product between arrays.
-            For 2-D arrays it is equivalent to matrix multiplication.
-
-            """
         for b, w in zip(self.biases, self.weights):
             a = sigmoid_vec(np.dot(w, a)+b)
         return a
 
     def SGD(self, training_data, epochs, mini_batch_size, eta,
-            test_data=None, test_frequency=None):
+            test_data=None, test_frequency=None, time=True):
         """ Implementing stochastic gradient descent to train the network.
 
             training_data is a list of tuples (x, y) representing
@@ -59,12 +51,15 @@ class Network():
             eta is the learning rate.
 
             optional argument test_data is for printing partial progress
-            after each epoch. Since you have to evaluete the network it
+            each <test_frequency> epochs. Since you have to evaluete the network it
             slows things down.
+
+            time (boolean) profiles times of execution
 
         """
 
         if test_frequency is None: test_frequency = epochs-1
+        if time: epochs_time = []
         if test_data:
             n_test = len(test_data)
         else:
@@ -72,6 +67,7 @@ class Network():
         n = len(training_data)
 
         for j in xrange(epochs):
+            if time: epoch_start_time = timeit.default_timer() 
             random.shuffle(training_data)
             # For each epoch shuffle the training data
             mini_batches = [
@@ -82,19 +78,31 @@ class Network():
                 self.update_mini_batch_M(mini_batch, eta)
                 # Updates network's bias and weights
 
-            log = "Epoch: {}".format(j)
+            # Logging info on the console
+            log = ["Epoch: {}".format(j+1)]
+            if time:
+                epochs_time.append(timeit.default_timer() - epoch_start_time)
+                log.append("\t\ttime: {} s".format(epochs_time[j]))
             if (((j % test_frequency) == 0) and n_test > 0):
-                log += ("\t\ttest: {} \ {}".format(self.evaluate(test_data), n_test))
-            print log
-
+                precision = self.evaluate(test_data)
+                log.append("\t\ttest: {} \ {}".format(precision, n_test))
+            print ' '.join(log)
             # Si ringrazia @lorsem per il debug di questa if
+
+        # Logging final result
+        print "\nTRAINING COMPLETED"
+        if test_data:
+            print "Precision: \t\t\t{} %".format(precision/float(n_test) * 100)
+        print "Average epoch time: \t\t{} s".format(np.mean(epochs_time))
+        print "Total time of execution: \t{} s".format(sum(epochs_time))
 
 
     def update_mini_batch(self, mini_batch, eta):
         """ Update the network's weights and biases by applying
             gradient descent using backpropagation to a single mini batch.
 
-            np.zeros returns array filled with zeros of given shape
+            DEPRECATED for unpdate_mini_batch_M which is 1.6 faster
+
         """
 
         nabla_b = [np.zeros(b.shape) for b in self.biases]
@@ -113,7 +121,7 @@ class Network():
     def update_mini_batch_M(self, mini_batch, eta):
         """ Compute all the minibatch at the same time using a matrix of training
             input and a matrix of training output instead of looping
-            over each one of them
+            over each one of them. More numpy less pure python = 1.6 faster
         """
 
         nabla_b = [np.zeros(b.shape) for b in self.biases]
@@ -135,12 +143,9 @@ class Network():
             activation = sigmoid_vec(Z)
             activations.append(activation)
 
-        
         delta = self.cost_derivative(activations[-1], Y) * \
             sigmoid_prime_vec(Zs[-1])
-
         nabla_w[-1] = np.dot(delta, activations[-2].transpose())
-
 
         # now sum all columns of delta 
         delta_sum = np.expand_dims(delta.sum(axis=1), axis=1)
@@ -156,23 +161,19 @@ class Network():
             delta_sum = np.expand_dims(delta.sum(axis=1), axis=1)
             nabla_b[-l] = delta_sum
             nabla_w[-l] = np.dot(delta, activations[-l-1].transpose())
-       # If it did't screw up till this line, well that's a miracle.
-
-        #learn!
+        # Now learn!
         self.weights = [w-(eta/len(mini_batch))*nw
                         for w, nw in zip(self.weights, nabla_w)]
         self.biases = [b-(eta/len(mini_batch))*nb
                        for b, nb in zip(self.biases, nabla_b)]
-
-
-
 
     def backprop(self, x, y):
         """ Return a tuple (nabla_b, nabla_w) representing the
             gradient for the cost function respect to bias and weights, calculated
             with their values.
 
-            They are lists of numpy arrays as self.bias and self.weights
+            DEPRECATED
+
         """
 
         nabla_b = [np.zeros(b.shape) for b in self.biases]
@@ -198,8 +199,6 @@ class Network():
 
         nabla_b[-1] = delta
 
-        # Questo passaggio essere il male. Usa un barbatrucco numpyoso per fare questo:
-        # ogni elemento della matrice nabla_w essere il prodotto tra il suo ingresso e il contributo all'errore (delta)
         # NON essere un prodotto tra matrici algebricamente legale.
         # ESEMPIO:
         # 2 ingressi : [[a1 = 1],
